@@ -1,6 +1,12 @@
 import java.awt.*;
 import java.awt.event.*;
 import javax.swing.*;/* for UI */
+import java.io.*;/*fileReader, bufferedReader, IOexceptions */
+import java.util.List;/*List<> */
+import java.util.ArrayList;/*ArrayList<> */
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;// include sets(unique elements lists)
 
 public class Sudoku {
 
@@ -16,30 +22,39 @@ public class Sudoku {
     int width = 600;
     int height = 650;
 
-    String[] puzzle = {
-        "--74916-5",
-        "2---6-3-9",
-        "-----7-1-",
-        "-586----4",
-        "--3----9-",
-        "--62--187",
-        "9-4-7---2",
-        "67-83----",
-        "81--45---"
-    };
+    String[] puzzle;
+    String[] solution;
 
-    String[] solution = {
-        "387491625",
-        "241568379",
-        "569327418",
-        "758619234",
-        "123784596",
-        "496253187",
-        "934176852",
-        "675832941",
-        "812945763"
-    };
+    List<String[]> puzzleList = new ArrayList<>();/*lists to store puzzles and solutions */
+    List<String[]> solutionList = new ArrayList<>();
 
+    void loadPuzzles(String filename){
+        try{
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(filename));/*open file for reading */
+            String line;
+            int lineNum = 0;
+            String[] tempPuz = null;
+
+            while((line = bufferedReader.readLine())!= null/*read solution, puzzle lines while they contain */){
+                if (lineNum % 2 == 0){/* if even */
+                    tempPuz = line.split(",");/*split row into an array of 9 strings */
+                }
+                else{
+                    String[] tempSol = line.split(",");
+                    puzzleList.add(tempPuz);
+                    solutionList.add(tempSol);
+                }
+                lineNum ++;
+            }
+            bufferedReader.close(); /*close file */
+
+        }
+        catch(IOException e){/*catch file-related exceptions */
+            e.printStackTrace();/*print catched error */
+        }
+    }
+
+    
     JFrame window = new JFrame("JavaSudoku by ic3dust");
     JLabel textLabel = new JLabel();
     JPanel textPanel = new JPanel();
@@ -50,8 +65,16 @@ public class Sudoku {
     JButton selectedBtn = null;
     int errors = 0;
 
+    JButton restart = new JButton("Restart");
+
+    Set<Integer> completedPuzzles = new HashSet<>();// int elements in set; completedPuzzles = hashset. unordered, only checks if the number exists there. faster
+    int lastPuzzleIndex = -1; // last puzzle solved(it wont appear after a victory)
+
 
     Sudoku(){
+
+        loadPuzzles("puzzles.txt");
+        pickRandomPuzzle();
         window.setSize(width, height);
         window.setResizable(false);
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);/*Exit button closes the window */
@@ -62,8 +85,21 @@ public class Sudoku {
         textLabel.setHorizontalAlignment(JLabel.CENTER);
         textLabel.setText("Sudoku: 0");
 
+        restart.setFont(new Font("Arial", Font.BOLD, 20));
+        restart.setBackground(Color.decode("#C8C2F4"));
+        restart.setFocusable(false);
+        restart.setVisible(false);
+
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));/*stack label and restart vertically */
+        textLabel.setAlignmentX(Component.CENTER_ALIGNMENT);/*centred alignment */
+        restart.setAlignmentX(Component.CENTER_ALIGNMENT);
+
         textPanel.add(textLabel);/*adding label to panel */
+        textPanel.add(Box.createRigidArea(new Dimension(0, 10)));/*space 10px between label and restart */
+        textPanel.add(restart);
+        textPanel.add(Box.createRigidArea(new Dimension(0, 5)));/*space 5px after restart in lable */
         textPanel.setBackground(Color.decode("#817DE5"));
+
         window.add(textPanel, BorderLayout.NORTH/*north side of the window*/);/*adding panel to window */
 
         board.setLayout(new GridLayout(9, 9));
@@ -74,8 +110,45 @@ public class Sudoku {
         setupButtons();
         window.add(buttons, BorderLayout.SOUTH);
 
+        restart.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e){
+                restart.setVisible(false);
+                board.removeAll();
+                buttons.removeAll();
+                errors =0;
+                textLabel.setText("Sudoku: 0");
+                selectedBtn=null;
+                
+                if (completedPuzzles.contains(lastPuzzleIndex) && completedPuzzles.size() < puzzleList.size()) {
+                    pickRandomPuzzle();// go to next puzzle from uncompleted after one win
+                }
+                
+                setupTiles();
+                setupButtons();
+                board.revalidate();/*refresh board layout */
+                board.repaint();/*draw board again */
+                buttons.revalidate();
+                buttons.repaint();
+            }
+        });
+
         window.setVisible(true);
     }
+    void pickRandomPuzzle() {
+        if (completedPuzzles.size() == puzzleList.size()) {
+        masterWin();
+        return;
+    }
+     Random randIndex = new Random();
+            int index;
+            do {
+                index = randIndex.nextInt(puzzleList.size());//take random index
+            } while (completedPuzzles.contains(index));
+
+            lastPuzzleIndex = index;// save index
+            puzzle = puzzleList.get(index);/*gets puzzle and gets solution for that index in puzzles.txt rows */
+            solution = solutionList.get(index);
+}
 
     void setupTiles(){
         for (int row = 0; row <9; row++){
@@ -122,6 +195,7 @@ public class Sudoku {
                             String tileSolution = String.valueOf(solution[row].charAt(col));
                             if (tileSolution.equals(selectedBtnText)/*compare values, not the same object, values have to refer to */){
                                 tile.setText(selectedBtnText);
+                                gameWon();
                             }
                             else{/*wrong tile */
                                 errors +=1;
@@ -167,7 +241,7 @@ public class Sudoku {
         }
     }
     void endGame() {
-        textLabel.setText("You made 5 errors :( Try again!");
+        textLabel.setText("You made 5 errors :( Game over!");
 
         for (Component comp : board.getComponents()) {
             if (comp instanceof Tile) {
@@ -176,7 +250,63 @@ public class Sudoku {
                 tile.setBackground(Color.LIGHT_GRAY);
             }
         }
+        restart.setVisible(true);
+
+        window.revalidate();/*refresh layout for tiles */
+        window.repaint();/*repaint board */
+        }
+        void gameWon(){
+
+            boolean won = true;
+            
+            for (int row = 0; row<9; row++){
+                for (int col = 0; col<9; col++){
+                    Tile tile = (Tile) board.getComponent(row*9 + col);
+                    String current = tile.getText();
+                    String correct = String.valueOf(solution[row].charAt(col));
+                    
+                    if (!current.equals(correct)){
+                        won = false;
+                        break;
+                    }
+
+                }
+                if(!won) break;
+            }
+
+            if(won){
+                textLabel.setText("You won! Errors count: " + errors);
+                for (Component comp : board.getComponents()) {
+                    if (comp instanceof Tile) {
+                    Tile tile = (Tile) comp;
+                    tile.setEnabled(false);
+                    tile.setBackground(Color.decode("#ADE0C7"));
+                    }
+                }
+
+                completedPuzzles.add(lastPuzzleIndex);//"puzzle completed" mark
+                restart.setVisible(true);
+                if(completedPuzzles.size()==puzzleList.size()){
+                    masterWin();
+                }
+            }
+            window.revalidate();
+            window.repaint();
+            
+        }
+        void masterWin(){
+            textLabel.setText("<html><center>You've completed all 4 puzzles! Congrats! :)</center></html>");
+            for (Component comp : board.getComponents()) {
+                if (comp instanceof Tile) {
+                    Tile tile = (Tile) comp;
+                    tile.setEnabled(false);
+                    tile.setBackground(Color.decode("#ADE0C7"));
+                }
+            }
+            restart.setVisible(true);
+            window.revalidate();
+            window.repaint();
+
     }
-
-
 }
+
